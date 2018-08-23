@@ -9,12 +9,20 @@ using namespace std;
 template<int N>
 class SimpleIntegrator
 {
+protected:
     const std::function<double(double)> &f;
     size_t size;
     double start;
     double end;
-    double sum_array[N];
     int part;
+    const double getRange()
+    {
+        return end-start;
+    }
+    const double getPart()
+    {
+        return part;
+    }
 public:
     SimpleIntegrator(const std::function<int(int)> &f_in, const size_t &size_in, const double &start_in, const double &end_in) : f(f_in),
         size(size_in),
@@ -23,21 +31,33 @@ public:
         part(size/N)
     {
     }
-    ~SimpleIntegrator()
+    virtual ~SimpleIntegrator()
     {
 
     }
-    double run()
+    virtual double run() = 0;
+};
+
+template<int N>
+class SimpleIntegratorArray : public SimpleIntegrator<N>
+{
+    double sum_array[N];
+public:
+    SimpleIntegratorArray(const std::function<int(int)> &f_in, const size_t &size_in, const double &start_in, const double &end_in) : SimpleIntegrator<N>(f_in,size_in, start_in,end_in)
+    {
+
+    }
+    double run() override
     {
         omp_set_num_threads(N);
-        double temp_del = (end-start)/size;
+        double temp_del = this->getRange()/this->size;
 #pragma omp parallel
         {
             double sum_temp = 0.0;
             int id = omp_get_thread_num();
-            int temp_N = part*(id+1);
-            double x_temp = part*id*temp_del + temp_del/2;
-            for(int c = part*id; c < temp_N; c++)
+            int temp_N = this->getPart()*(id+1);
+            double x_temp =  this->getPart()*id*temp_del + temp_del/2;
+            for(int c =  this->getPart()*id; c < temp_N; c++)
             {
                 sum_temp += 4.0/(1.0 + x_temp*x_temp);
                 x_temp += temp_del;
@@ -49,6 +69,40 @@ public:
         {
             sum+=val;
         }
+        sum *= temp_del;
+        return sum;
+    }
+};
+
+template<int N>
+class SimpleIntegratorAtomic : public SimpleIntegrator<N>
+{
+    double sum;
+public:
+    SimpleIntegratorAtomic(const std::function<int(int)> &f_in, const size_t &size_in, const double &start_in, const double &end_in) : SimpleIntegrator<N>(f_in,size_in, start_in,end_in),
+        sum(0.0f)
+    {
+
+    }
+    double run() override
+    {
+        omp_set_num_threads(N);
+        double temp_del = this->getRange()/this->size;
+#pragma omp parallel
+        {
+            double sum_temp = 0.0;
+            int id = omp_get_thread_num();
+            int temp_N = this->getPart()*(id+1);
+            double x_temp =  this->getPart()*id*temp_del + temp_del/2;
+            for(int c =  this->getPart()*id; c < temp_N; c++)
+            {
+                sum_temp += 4.0/(1.0 + x_temp*x_temp);
+                x_temp += temp_del;
+            }
+#pragma omp atomic update
+            sum += sum_temp;
+        }
+
         sum *= temp_del;
         return sum;
     }
@@ -81,26 +135,26 @@ int main()
 
 
         double start = omp_get_wtime();
-        SimpleIntegrator<1> integrator{F,N,begin,end};
+        SimpleIntegratorAtomic<1> integrator{F,N,begin,end};
         double sum = integrator.run();
         time_map[1] += omp_get_wtime() - start;
         cout << "----------------------------------------" << endl;
         cout << "Pi: " << sum << endl;
 
         start = omp_get_wtime();
-        SimpleIntegrator<2> integrator2{F,N,begin,end};
+        SimpleIntegratorAtomic<2> integrator2{F,N,begin,end};
         sum = integrator2.run();
         time_map[2] += omp_get_wtime() - start;
         cout << "Pi: " << sum << endl;
 
         start = omp_get_wtime();
-        SimpleIntegrator<4> integrator4{F,N,begin,end};
+        SimpleIntegratorAtomic<4> integrator4{F,N,begin,end};
         sum = integrator4.run();
         time_map[4] += omp_get_wtime() - start;
         cout << "Pi: " << sum << endl;
 
         start = omp_get_wtime();
-        SimpleIntegrator<8> integrator8{F,N,begin,end};
+        SimpleIntegratorAtomic<8> integrator8{F,N,begin,end};
         sum = integrator8.run();
         time_map[8] += omp_get_wtime() - start;
         cout << "Pi: " << sum << endl;
