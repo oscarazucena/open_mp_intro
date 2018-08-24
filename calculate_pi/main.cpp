@@ -110,6 +110,41 @@ public:
     }
 };
 
+//Integrator that uses atomic directive to store results
+template<int N>
+class SimpleIntegratorForLoop : public SimpleIntegrator<N>
+{
+    double sum;
+public:
+    SimpleIntegratorForLoop(const std::function<double(double)> &f_in, const size_t &size_in, const double &start_in, const double &end_in) : SimpleIntegrator<N>(f_in,size_in, start_in,end_in),
+        sum(0.0f)
+    {
+
+    }
+    double run() override
+    {
+        omp_set_num_threads(N);
+        double temp_del = this->getRange()/this->size;
+#pragma omp parallel
+        {
+            double sum_temp = 0.0;
+            int c = 0;
+            double temp_del_2 = temp_del/2.0f;
+#pragma omp for
+            for(c=0; c < this->size; c++)
+            {
+                double x_temp = c*temp_del+temp_del_2;
+                sum_temp += 4.0/(1.0 + x_temp*x_temp);
+            }
+#pragma omp atomic update
+            sum += sum_temp;
+        }
+
+        sum *= temp_del;
+        return sum;
+    }
+};
+
 //Class to simplify integrator test running.
 //Class will call to next one till 1
 template< template<int> class Integrator, int N>
@@ -137,7 +172,7 @@ public:
         double start = omp_get_wtime();
         double sum = integrator.run();
         time_map[N] += omp_get_wtime() - start;
-        //cout << "Pi (" << N << "): " << sum << endl;
+        cout << "Pi (" << N << "): " << sum << endl;
         //create and call the next test
         IntegratorTest<Integrator,N-1> integrator_n{f,size,begin,end};
         integrator_n.run(time_map);
@@ -172,7 +207,7 @@ public:
         double start = omp_get_wtime();
         double sum = integrator.run();
         time_map[1] += omp_get_wtime() - start;
-        //cout << "Pi (" << 1 << "): " << sum << endl;
+        cout << "Pi (" << 1 << "): " << sum << endl;
         //it ends here
     }
 
@@ -219,9 +254,11 @@ int main()
 
     for(int count = 0; count < loop_total; count++)
     {
-        IntegratorTest<SimpleIntegratorAtomic,8> test{F,N,begin,end};
-        test.run(time_map);
-        IntegratorTest<SimpleIntegratorArray,8> testA{F,N,begin,end};
+        //IntegratorTest<SimpleIntegratorAtomic,8> test{F,N,begin,end};
+        //test.run(time_map);
+        //IntegratorTest<SimpleIntegratorArray,8> testA{F,N,begin,end};
+        //testA.run(time_map_A);
+        IntegratorTest<SimpleIntegratorForLoop,8> testA{F,N,begin,end};
         testA.run(time_map_A);
     }
 
