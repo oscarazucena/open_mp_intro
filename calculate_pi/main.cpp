@@ -16,22 +16,16 @@ protected:
     size_t size;
     double start;
     double end;
-    int part;
     const double getRange()
     {
         return end-start;
-    }
-    const double getPart()
-    {
-        return part;
     }
 public:
     SimpleIntegrator(const std::function<double(double)> &f_in, const size_t &size_in, const double &start_in, const double &end_in) :
         f(f_in),
         size(size_in),
         start(start_in),
-        end(end_in),
-        part(size/N)
+        end(end_in)
     {
     }
     virtual ~SimpleIntegrator()
@@ -49,7 +43,6 @@ class SimpleIntegratorArray : public SimpleIntegrator<N>
 public:
     SimpleIntegratorArray(const std::function<double(double)> &f_in, const size_t &size_in, const double &start_in, const double &end_in) : SimpleIntegrator<N>(f_in,size_in, start_in,end_in)
     {
-        cout << "SimpleIntegratorArray" << endl;
     }
     double run() override
     {
@@ -59,9 +52,11 @@ public:
         {
             double sum_temp = 0.0;
             int id = omp_get_thread_num();
-            int temp_N = this->getPart()*(id+1);
-            double x_temp =  this->getPart()*id*temp_del + temp_del/2;
-            for(int c =  this->getPart()*id; c < temp_N; c++)
+            int c_start = this->size*id/N;
+            int c_end = this->size*(id+1)/N;
+            double x_temp =  c_start*temp_del + temp_del/2;
+
+            for(; c_start < c_end; c_start++)
             {
                 sum_temp += 4.0/(1.0 + x_temp*x_temp);
                 x_temp += temp_del;
@@ -97,9 +92,11 @@ public:
         {
             double sum_temp = 0.0;
             int id = omp_get_thread_num();
-            int temp_N = this->getPart()*(id+1);
-            double x_temp =  this->getPart()*id*temp_del + temp_del/2;
-            for(int c =  this->getPart()*id; c < temp_N; c++)
+            int c_start = this->size*id/N;
+            int c_end = this->size*(id+1)/N;
+            double x_temp =  c_start*temp_del + temp_del/2;
+
+            for(; c_start < c_end; c_start++)
             {
                 sum_temp += 4.0/(1.0 + x_temp*x_temp);
                 x_temp += temp_del;
@@ -140,7 +137,7 @@ public:
         double start = omp_get_wtime();
         double sum = integrator.run();
         time_map[N] += omp_get_wtime() - start;
-        cout << "Pi (" << N << "): " << sum << endl;
+        //cout << "Pi (" << N << "): " << sum << endl;
         //create and call the next test
         IntegratorTest<Integrator,N-1> integrator_n{f,size,begin,end};
         integrator_n.run(time_map);
@@ -175,8 +172,8 @@ public:
         double start = omp_get_wtime();
         double sum = integrator.run();
         time_map[1] += omp_get_wtime() - start;
-        cout << "Pi (" << 1 << "): " << sum << endl;
-        //it end here
+        //cout << "Pi (" << 1 << "): " << sum << endl;
+        //it ends here
     }
 
 };
