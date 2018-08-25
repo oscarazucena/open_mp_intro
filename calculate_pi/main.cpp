@@ -116,8 +116,7 @@ class SimpleIntegratorForLoop : public SimpleIntegrator<N>
 {
     double sum;
 public:
-    SimpleIntegratorForLoop(const std::function<double(double)> &f_in, const size_t &size_in, const double &start_in, const double &end_in) : SimpleIntegrator<N>(f_in,size_in, start_in,end_in),
-        sum(0.0f)
+    SimpleIntegratorForLoop(const std::function<double(double)> &f_in, const size_t &size_in, const double &start_in, const double &end_in) : SimpleIntegrator<N>(f_in,size_in, start_in,end_in)
     {
 
     }
@@ -125,23 +124,17 @@ public:
     {
         omp_set_num_threads(N);
         double temp_del = this->getRange()/this->size;
-#pragma omp parallel
+        double sum_temp = 0.0f;
+        double temp_del_2 = temp_del/2.0f;
+        int c = 0;
+        double x_temp = temp_del_2;
+#pragma omp parallel for reduction(+:sum_temp,x_temp)
+        for(c=0; c < this->size; c++)
         {
-            double sum_temp = 0.0;
-            int c = 0;
-            double temp_del_2 = temp_del/2.0f;
-#pragma omp for
-            for(c=0; c < this->size; c++)
-            {
-                double x_temp = c*temp_del+temp_del_2;
-                sum_temp += 4.0/(1.0 + x_temp*x_temp);
-            }
-#pragma omp atomic update
-            sum += sum_temp;
+            x_temp += temp_del;
+            sum_temp += 4.0/(1.0 + x_temp*x_temp);
         }
-
-        sum *= temp_del;
-        return sum;
+        return sum_temp*temp_del;
     }
 };
 
@@ -172,7 +165,7 @@ public:
         double start = omp_get_wtime();
         double sum = integrator.run();
         time_map[N] += omp_get_wtime() - start;
-        cout << "Pi (" << N << "): " << sum << endl;
+        //cout << "Pi (" << N << "): " << sum << endl;
         //create and call the next test
         IntegratorTest<Integrator,N-1> integrator_n{f,size,begin,end};
         integrator_n.run(time_map);
@@ -207,7 +200,7 @@ public:
         double start = omp_get_wtime();
         double sum = integrator.run();
         time_map[1] += omp_get_wtime() - start;
-        cout << "Pi (" << 1 << "): " << sum << endl;
+        //cout << "Pi (" << 1 << "): " << sum << endl;
         //it ends here
     }
 
@@ -239,6 +232,18 @@ int main()
         {8,0.0f},
     };
 
+    map<int,double> time_map_for
+    {
+        {1,0.0f},
+        {2,0.0f},
+        {3,0.0f},
+        {4,0.0f},
+        {5,0.0f},
+        {6,0.0f},
+        {7,0.0f},
+        {8,0.0f},
+    };
+
 
     int loop_total = 100;
     //Equation for pi is : sum(0,1,deltaX,F(x)*deltaX)
@@ -254,20 +259,29 @@ int main()
 
     for(int count = 0; count < loop_total; count++)
     {
-        //IntegratorTest<SimpleIntegratorAtomic,8> test{F,N,begin,end};
-        //test.run(time_map);
-        //IntegratorTest<SimpleIntegratorArray,8> testA{F,N,begin,end};
-        //testA.run(time_map_A);
-        IntegratorTest<SimpleIntegratorForLoop,8> testA{F,N,begin,end};
-        testA.run(time_map_A);
+        IntegratorTest<SimpleIntegratorAtomic,8> test_array{F,N,begin,end};
+        test_array.run(time_map);
+        IntegratorTest<SimpleIntegratorArray,8> test_atomic{F,N,begin,end};
+        test_atomic.run(time_map_A);
+        IntegratorTest<SimpleIntegratorForLoop,8> test_for{F,N,begin,end};
+        test_for.run(time_map_for);
     }
 
+    auto calculate = [loop_total=loop_total](const int i, const map<int,double> &time_m) -> double
+    {
+        const auto iter = time_m.find(i);
+        if (iter != time_m.end())
+        {
+            return iter->second/(loop_total)*1000.0f;
+        }
+        return 0.0f;
+    };
 
-    cout << "Mean time [i]: " << "Atomic:" <<", "<< "Array: "<<" ms" << endl;
+    cout << "Mean time [i]: " << "Atomic:" <<", "<< "Array: "<<"For Loop: " << endl;
 
     for (int i = 1; i < 9; i++)
     {
-        cout << "Mean time [" << i << "]: " << time_map[i]/(loop_total)*1000 <<", "<< time_map_A[i]/(loop_total)*1000 <<", "<< (time_map[i]/(loop_total)*1000 - time_map_A[i]/(loop_total)*1000)*100<< endl;
+        cout << "Mean time [" << i << "]: " << calculate(i,time_map) <<", "<< calculate(i,time_map_A) <<", "<< calculate(i,time_map_for)<< endl;
     }
 
     return 0;
